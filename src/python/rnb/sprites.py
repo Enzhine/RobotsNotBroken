@@ -17,3 +17,8 @@ class BasicSpriteBlock(pygame.sprite.Sprite):
 class DirtBlock(BasicSpriteBlock):
     def __init__(self):
         super(DirtBlock, self).__init__("dirt_block.png")
+
+
+class StoneBlock(BasicSpriteBlock):
+    def __init__(self):
+        super(StoneBlock, self).__init__("stone_block.png")
