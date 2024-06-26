@@ -8,6 +8,11 @@ from .core import (
     enum,
 )
 from .sprites import BasicSpriteBlock
+from .handlers import (
+    RescaleInputHandler,
+    TranslateInputHandler
+)
+from math import ceil
 
 
 class LayerControl:
@@ -17,6 +22,7 @@ class LayerControl:
 
     def __init__(self, target_screen: pygame.surface.Surface):
         self.target_screen = target_screen
+        self.pre_target = pygame.Surface(self.target_screen.get_size())
 
         self.background = pygame.sprite.Group()
         self.general = pygame.sprite.Group()
@@ -25,16 +31,19 @@ class LayerControl:
     def blit_ordered(self):
         # pre layer
         for sprite in self.background:
-            self.target_screen.blit(sprite.surf, sprite.rect)
+            self.pre_target.blit(sprite.surf, sprite.rect)
         # main layer
         for sprite in self.general:
-            self.target_screen.blit(sprite.surf, sprite.rect)
+            self.pre_target.blit(sprite.surf, sprite.rect)
         # post layer
         for sprite in self.foreground:
-            self.target_screen.blit(sprite.surf, sprite.rect)
+            self.pre_target.blit(sprite.surf, sprite.rect)
+
+    def final_render(self, screen):
+        self.target_screen.blit(screen, (0, 0))
 
     def update(self, rect: pygame.rect.Rect):
-        self.target_screen.fill((0,0,0), rect)
+        self.pre_target.fill((0, 0, 0), rect)
 
 
 class MapControl:
@@ -45,11 +54,11 @@ class MapControl:
 
         self.__grid_sz_x, self.__grid_sz_y = grid_block
         w, h = layer_control.target_screen.get_size()
-        self.sz_x, self.sz_y = w // self.__grid_sz_x, h // self.__grid_sz_y
-        self.__cache: dict[Int2D, list[pygame.sprite.Sprite | None]] = dict()
+        self.sz_x, self.sz_y = ceil(w / self.__grid_sz_x), ceil(h // self.__grid_sz_y)
+        self.__cache = [[[None] * 3 for _ in range(self.sz_y)] for _ in range(self.sz_x)]
 
     @staticmethod
-    def __map_slots(layer: enum = LayerControl.LAYER_BACKGROUND) -> int:
+    def __map_z(layer: enum) -> int:
         if layer == LayerControl.LAYER_FOREGROUND:
             return 2
         elif layer == LayerControl.LAYER_GENERAL:
@@ -57,56 +66,50 @@ class MapControl:
         else:
             return 0
 
-    def __try_get(self, pos: Int2D, layer: enum = LayerControl.LAYER_BACKGROUND) -> BasicSpriteBlock | None:
-        try:
-            slots = self.__cache[pos]
-            return slots[MapControl.__map_slots(layer)]
-        except KeyError:
-            return None
+    def __map_layer(self, layer: enum) -> pygame.sprite.Group:
+        if layer == LayerControl.LAYER_FOREGROUND:
+            return self.layers.foreground
+        elif layer == LayerControl.LAYER_GENERAL:
+            return self.layers.general
+        else:
+            return self.layers.background
 
-    def __cache_set(self, obj: BasicSpriteBlock, pos: Int2D, layer: enum = LayerControl.LAYER_BACKGROUND):
-        try:
-            slots = self.__cache[pos]
-        except KeyError:
-            slots = [None] * 3
-            self.__cache[pos] = slots
-        slots[MapControl.__map_slots(layer)] = obj
+    def __cache_get(self, pos: Int2D, layer: enum = LayerControl.LAYER_BACKGROUND) -> BasicSpriteBlock | None:
+        x, y = pos
+        z = MapControl.__map_z(layer)
+        return self.__cache[x][y][z]
 
-    def __cache_rem(self, pos: Int2D, layer: enum = LayerControl.LAYER_BACKGROUND):
-        try:
-            slots = self.__cache[pos]
-            slots[MapControl.__map_slots(layer)] = None
-        except KeyError:
-            pass
+    def __cache_set(self, obj: BasicSpriteBlock | None, pos: Int2D, layer: enum = LayerControl.LAYER_BACKGROUND):
+        x, y = pos
+        z = MapControl.__map_z(layer)
+        self.__cache[x][y][z] = obj
 
     def set(self, clazz: type, pos: Int2D = Int2DZero, layer: enum = LayerControl.LAYER_BACKGROUND):
-        got = self.__try_get(pos, layer)
+        got = self.__cache_get(pos, layer)
         if clazz:
             if got:
                 raise RuntimeError
             sprite = clazz()
-            if layer == LayerControl.LAYER_FOREGROUND:
-                self.layers.foreground.add(sprite)
-            elif layer == LayerControl.LAYER_GENERAL:
-                self.layers.general.add(sprite)
-            else:
-                self.layers.background.add(sprite)
+
+            ground = self.__map_layer(layer)
+            ground.add(sprite)
+
             self.to_local_zero(sprite)
             self.move_ip(sprite, *pos)
             # cache
             self.__cache_set(sprite, pos, layer)
         elif got:
-            self.__cache_rem(pos, layer)
+            self.rem(pos, layer)
 
     def get(self, pos: Int2D = Int2DZero, layer: enum = LayerControl.LAYER_BACKGROUND) -> BasicSpriteBlock | None:
-        return self.__try_get(pos, layer)
+        return self.__cache_get(pos, layer)
 
-    def remove(self, pos: Int2D = Int2DZero, layer: enum = LayerControl.LAYER_BACKGROUND) -> bool:
-        obj = self.__try_get(pos, layer)
+    def rem(self, pos: Int2D = Int2DZero, layer: enum = LayerControl.LAYER_BACKGROUND) -> bool:
+        obj = self.__cache_get(pos, layer)
         if obj:
             obj.kill()
             self.layers.update(obj.rect)
-            self.__cache_rem(pos, layer)
+            self.__cache_set(None, pos, layer)
             return True
         return False
 
@@ -128,15 +131,35 @@ class ProcessControl:
     def __init__(self, layers: LayerControl):
         self.alive = True
         self.map_ctrl = MapControl(layers, (16, 16))
+        self.steps = 0
+
+        self.rescaler = RescaleInputHandler()
+        self.translator = TranslateInputHandler(self.rescaler, self.map_ctrl.layers.target_screen.get_size())
+
+    def rescaled(self) -> pygame.surface.Surface:
+        k = self.rescaler.scale
+        w, h = self.map_ctrl.layers.target_screen.get_size()
+        sw, sh = ceil(w/k), ceil(h/k)
+        cx, cy = ceil(w/2), ceil(h/2)
+        dx, dy = self.translator.delta[0], self.translator.delta[1]
+        sub = self.map_ctrl.layers.pre_target.subsurface((cx - sw//2 - dx, cy - sh//2 - dy), (sw, sh))
+        return pygame.transform.scale(sub, (w, h))
+
+    def __handle_quit(self, event: pygame.event.Event):
+        if event.type != pygame.QUIT:
+            return
+        self.alive = False
 
     def __handle(self):
         for event in pygame.event.get():
-            # end event
-            if event.type == pygame.QUIT:
-                self.alive = False
+            # events
+            self.__handle_quit(event)
+            self.rescaler.on_event(event)
+            self.translator.on_event(event)
             if event.type == pygame.MOUSEBUTTONUP:
-                lpos = self.map_ctrl.local_pos_at(event.pos)
-                self.map_ctrl.remove(lpos, LayerControl.LAYER_BACKGROUND)
+                if event.button == 1:
+                    lpos = self.map_ctrl.local_pos_at(self.translator.map_scaled(event.pos))
+                    self.map_ctrl.rem(lpos, LayerControl.LAYER_BACKGROUND)
 
     def update(self):
         # guard statement
@@ -146,6 +169,8 @@ class ProcessControl:
 
     def render_map(self):
         self.map_ctrl.layers.blit_ordered()
+        self.map_ctrl.layers.target_screen.fill((0, 0, 0))
+        self.map_ctrl.layers.final_render(self.rescaled())
 
 
 class RenderControl:
@@ -163,14 +188,6 @@ class RenderControl:
         # flip
         pygame.display.flip()
         self.clock.tick(self.fps)
-
-    def rescale(self):
-        # TODO
-        k = 2
-        w, h = self.process.layers.target_screen.get_size()
-        cx, cy = w//k, h//k
-        sub = self.process.layers.target_screen.subsurface((cx - w//k//2, cy - h//k//2), (cx + w//k//2, cy + h//k//2))
-        self.process.layers.target_screen.blit(pygame.transform.scale(sub, (w, h)), (0, 0))
 
     def start(self):
         while self.process.alive:
