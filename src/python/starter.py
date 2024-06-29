@@ -1,15 +1,11 @@
-import pygame
-import random
 from rnb.application import MainApplication
-from rnb.sprites import DirtBlock, StoneBlock
+from rnb.world import DefaultWorldGenerator
 
 
 def main():
-    app = MainApplication()
-    for x in range(0, app.process.map_ctrl.sz_x):
-        for y in range(0, app.process.map_ctrl.sz_y):
-            clazz = DirtBlock if random.random() < 0.5 else StoneBlock
-            app.process.map_ctrl.set(clazz, pos=(x, y))
+    wg = DefaultWorldGenerator(5, 6, 12, 5, seed=1243)
+    app = MainApplication(world_gen=wg)
+    app.process.rescaler.force_scale(3)
     app.start()
 
 

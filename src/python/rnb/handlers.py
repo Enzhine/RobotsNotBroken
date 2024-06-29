@@ -17,6 +17,13 @@ class RescaleInputHandler(EventHandler):
         self.__k = k
         self.__max_k = floor(log(max_k, k))
 
+    def __update_scale(self):
+        self.scale = 1.1 ** self.__steps
+
+    def force_scale(self, scale: float):
+        self.__steps = floor(log(scale, self.__k))
+        self.__update_scale()
+
     @staticmethod
     def __is_vertical(event: pygame.event.Event):
         return event.y > 0
@@ -35,15 +42,18 @@ class RescaleInputHandler(EventHandler):
         elif self.__steps > self.__max_k:
             self.__steps = self.__max_k
         # rescale
-        self.scale = 1.1 ** self.__steps
+        self.__update_scale()
 
 
 class TranslateInputHandler(EventHandler):
-    def __init__(self, rescaler: RescaleInputHandler, sizes: Int2D):
+    def __init__(self, rescaler: RescaleInputHandler, screen_size: Int2D):
         self.__rescaler = rescaler
         self.__prev = None
-        self.__sizes = sizes
-        self.delta = [0, 0]
+        self.__sizes = screen_size
+        self.__delta = [0, 0]
+
+    def delta(self) -> Int2D:
+        return tuple(self.__delta)
 
     def __map_scaled(self, pos: Int2D) -> Int2D:
         k = self.__rescaler.scale
@@ -56,16 +66,16 @@ class TranslateInputHandler(EventHandler):
         k = self.__rescaler.scale
         x, y = pos
         w, h = self.__sizes
-        dx, dy = self.delta[0], self.delta[1]
+        dx, dy = self.__delta[0], self.__delta[1]
         sx, sy = ceil(w / 2 - w / k / 2 + x / k - dx), ceil(h / 2 - h / k / 2 + y / k - dy)
         return sx, sy
 
-    def __delta(self, now):
+    def __ev_delta(self, now):
         return now[0] - self.__prev[0], now[1] - self.__prev[1]
 
     def __plus(self, delta):
-        self.delta[0] = self.delta[0] + delta[0]
-        self.delta[1] = self.delta[1] + delta[1]
+        self.__delta[0] = self.__delta[0] + delta[0]
+        self.__delta[1] = self.__delta[1] + delta[1]
 
     @staticmethod
     def is_lmb(event: pygame.event.Event):
@@ -86,5 +96,5 @@ class TranslateInputHandler(EventHandler):
             if not self.__prev:
                 return
             l_pos = self.__map_scaled(event.pos)
-            self.__plus(self.__delta(l_pos))
+            self.__plus(self.__ev_delta(l_pos))
             self.__prev = l_pos
