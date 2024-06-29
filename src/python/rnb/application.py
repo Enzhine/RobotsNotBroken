@@ -1,25 +1,9 @@
 from abc import ABC, abstractmethod
 
 import pygame
-from .core import (
-    Int2D,
-    Int2DZero,
-    get_or,
-    is_unscalable,
-    mk_enum,
-    enum,
-    dist, sum2d, sub2d
-)
-from .sprites import (
-    BasicSpriteBlock,
-    MultiBlock,
-    PowerStageMultiblock,
-    RobotEntity, CursorBlock
-)
-from .handlers import (
-    RescaleInputHandler,
-    TranslateInputHandler
-)
+from .core import Int2D, Int2DZero, get_or, is_unscalable, mk_enum, enum, dist, sum2d, sub2d
+from .sprites import BasicSpriteBlock, MultiBlock, CursorBlock
+from .handlers import RescaleInputHandler, TranslateInputHandler, GuiContextListener
 from math import ceil, floor
 
 
@@ -63,10 +47,9 @@ class LightMap:
 
     def update_light(self, pos: Int2D, level: float):
         x, y = pos
-        res = floor(level * self.__mx)
-        now = self.get_light(pos)
-        if res > now:
-            self.__lmp[x][y] = res
+        now = floor(level * self.__mx)
+        before = self.get_light(pos)
+        self.__lmp[x][y] = min(self.__mx, before + now)
 
     def get_max(self):
         return self.__mx
@@ -231,6 +214,10 @@ class ProcessControl:
         self.translator = TranslateInputHandler(self.rescaler, self.__dest.get_size())
         self.cursor_ctrl = CursorController(self.translator)
 
+        self.ctxt_listener = GuiContextListener()
+        self.ctxt_listener.subscribe(self.rescaler)
+        self.ctxt_listener.subscribe(self.translator)
+
     def __handle_quit(self, event: pygame.event.Event):
         if event.type != pygame.QUIT:
             return
@@ -240,16 +227,11 @@ class ProcessControl:
         for event in pygame.event.get():
             # events
             self.__handle_quit(event)
-            self.rescaler.on_event(event)
-            self.translator.on_event(event)
-            # if event.type == pygame.MOUSEBUTTONUP:
-            #     lpos = self.map_ctrl.local_pos_at(self.translator.map_scaled(event.pos))
-            #     if event.button == 1:
-            #         self.map_ctrl.rem(lpos, LayerControl.LAYER_GENERAL)
-            #     elif event.button == 2:
-            #         self.map_ctrl.set(PowerStageMultiblock, lpos, LayerControl.LAYER_GENERAL)
-            #     elif event.button == 3:
-            #         self.map_ctrl.set(RobotEntity, lpos, LayerControl.LAYER_GENERAL)
+            self.ctxt_listener.on_event(event)
+            if event.type == pygame.MOUSEBUTTONUP:
+                pos = self.cursor_ctrl.map_pos(self.map_ctrl)
+                if event.button == 1:
+                    self.map_ctrl.light_ctrl.brighten(pos, 5)
 
     def update(self):
         # guard statement
@@ -340,7 +322,7 @@ class MainApplication:
             self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
 
         # layer init
-        self.layers = LayerControl(0.9, 1.1)
+        self.layers = LayerControl(0.8, 1.2)
         self.process = ProcessControl(self.screen, self.layers)
         self.renders = RenderControl(self.screen, self.process)
 
