@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 import pygame
 from .core import Int2D, Int2DZero, get_or, is_unscalable, mk_enum, enum, dist, sum2d, sub2d
 from .sprites import BasicSpriteBlock, MultiBlock, CursorBlock
-from .handlers import RescaleInputHandler, TranslateInputHandler, GuiContextListener
+from .handlers import RescaleInputHandler, TranslateInputHandler, GuiContextListener, TestGui
 from math import ceil, floor
 
 
@@ -18,6 +18,8 @@ class LayerControl:
         self.background = pygame.sprite.Group()
         self.general = pygame.sprite.Group()
         self.foreground = pygame.sprite.Group()
+
+        self.gui = pygame.sprite.Group()
 
     def by_depth(self, offset: Int2D, layer: enum):
         if layer == self.LAYER_GENERAL:
@@ -210,13 +212,13 @@ class ProcessControl:
 
         self.alive = True
         self.map_ctrl = MapControl(self.__layer_ctrl, (16, 16), self.__dest.get_size())
-        self.rescaler = RescaleInputHandler()
-        self.translator = TranslateInputHandler(self.rescaler, self.__dest.get_size())
-        self.cursor_ctrl = CursorController(self.translator)
 
         self.ctxt_listener = GuiContextListener()
-        self.ctxt_listener.subscribe(self.rescaler)
-        self.ctxt_listener.subscribe(self.translator)
+        self.rescaler = RescaleInputHandler()
+        self.rescaler.listen(self.ctxt_listener)
+        self.translator = TranslateInputHandler(self.rescaler, self.__dest.get_size())
+        self.translator.listen(self.ctxt_listener)
+        self.cursor_ctrl = CursorController(self.translator)
 
     def __handle_quit(self, event: pygame.event.Event):
         if event.type != pygame.QUIT:
@@ -228,10 +230,12 @@ class ProcessControl:
             # events
             self.__handle_quit(event)
             self.ctxt_listener.on_event(event)
-            if event.type == pygame.MOUSEBUTTONUP:
-                pos = self.cursor_ctrl.map_pos(self.map_ctrl)
+            if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    self.map_ctrl.light_ctrl.brighten(pos, 5)
+                    TestGui(self.__layer_ctrl.gui, self.__dest).listen(self.ctxt_listener)
+                # pos = self.cursor_ctrl.map_pos(self.map_ctrl)
+                # if event.button == 1:
+                #     self.map_ctrl.light_ctrl.brighten(pos, 5)
 
     def update(self):
         # guard statement
@@ -297,11 +301,16 @@ class RenderControl:
         target = sprite.rect.move(*sum2d(delta, to))
         self.__pre_dest.blit(sprite.surf, target)
 
+    def __blit_gui(self):
+        for sprite in self.__layers().gui:
+            self.__dest.blit(sprite.surf, sprite.rect)
+
     def __render_map(self):
         self.__pre_dest.fill((0, 0, 0))
         self.__blit_ordered()
         self.__blit_cursor()
         self.__dest.blit(self.__rescaled(), (0, 0))
+        self.__blit_gui()
 
 
 class WorldGenerator(ABC):

@@ -117,3 +117,13 @@ class PowerStageMultiblock(BasicSpriteBlock, MultiBlock):
 class RobotEntity(BasicSpriteBlock):
     def __init__(self):
         super(RobotEntity, self).__init__("prog_robot.png")
+
+
+class BasicSpriteGui(pygame.sprite.Sprite):
+    def __init__(self, sprite_name: str, pos: Int2D, group: pygame.sprite.Group):
+        pygame.sprite.Sprite.__init__(self)
+        self.origin_surf = BasicSpriteBlock.load_source(sprite_name)
+        self.surf = self.origin_surf.copy()
+        self.rect = self.surf.get_rect()
+        self.rect.move_ip(*pos)
+        group.add(self)

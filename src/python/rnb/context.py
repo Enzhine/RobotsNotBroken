@@ -2,11 +2,7 @@ from abc import ABC, abstractmethod
 
 import pygame
 
-from .core import (
-    enum,
-    mk_enum,
-    Int2D
-)
+from .core import enum, mk_enum, Int2D
 
 
 class EventHandler(ABC):
@@ -18,12 +14,6 @@ class EventHandler(ABC):
 class AbstractContext(ABC):
     @abstractmethod
     def notify(self, *state):
-        raise NotImplementedError
-
-
-class WrappedContext(AbstractContext, ABC):
-    @abstractmethod
-    def is_primary(self) -> bool:
         raise NotImplementedError
 
 
@@ -39,6 +29,24 @@ class AbstractContextListener(ABC):
     @abstractmethod
     def is_listening(self) -> bool:
         raise NotImplementedError
+
+
+class WrappedContext(AbstractContext, ABC):
+    def __init__(self):
+        self._producer: AbstractContextListener | None = None
+
+    @abstractmethod
+    def is_primary(self) -> bool:
+        raise NotImplementedError
+
+    def listen(self, context: AbstractContextListener):
+        self._producer = context
+        self._producer.subscribe(self)
+
+    def disconnect(self):
+        if self._producer:
+            self._producer.forget(self)
+            self._producer = None
 
 
 class MultiContextListener(AbstractContextListener, ABC):
@@ -80,7 +88,6 @@ class MultiContextListener(AbstractContextListener, ABC):
 class GuiContext(WrappedContext, ABC):
     TYPE_LMB: enum = mk_enum()
     TYPE_RMB: enum = mk_enum()
-    TYPE_MID: enum = mk_enum()
     TYPE_H_ENTER: enum = mk_enum()
     TYPE_H_EXIT: enum = mk_enum()
 

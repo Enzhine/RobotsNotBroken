@@ -2,9 +2,11 @@ from abc import ABC, abstractmethod
 
 import pygame
 
-from .core import Int2D, Int2DZero, sum2dref, sub2d, sum2d
+from .core import Int2D, Int2DZero, sum2dref, sub2d, sum2d, enum
 from .context import MultiContextListener, GuiContext, EventHandler, WrappedContext
 from math import log, floor, ceil
+
+from .sprites import BasicSpriteGui
 
 
 class GuiContextListener(MultiContextListener, EventHandler):
@@ -143,3 +145,20 @@ class TranslateInputHandler(EventContext):
                 return
             sum2dref(self.__delta, sub2d(l_pos, self.__prev))
             self.__prev = l_pos
+
+
+class TestGui(BasicSpriteGui, GuiContext):
+    def __init__(self, group: pygame.sprite.Group, target: pygame.surface.Surface):
+        w, h = target.get_size()
+        BasicSpriteGui.__init__(self, "prog_robot.png", (w // 2, h // 2), group)
+
+    def notify(self, pos: Int2D, _type: enum):
+        if _type == GuiContext.TYPE_RMB:
+            self.disconnect()
+            self.kill()
+
+    def is_primary(self) -> bool:
+        return True
+
+    def bounds(self) -> pygame.Rect:
+        return self.rect
