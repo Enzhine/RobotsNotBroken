@@ -1,5 +1,9 @@
 import pygame
-from .core import Int2D
+
+from .core import (
+    Int2D,
+    Int2DZero, sum2dref, sub2d, sum2d
+)
 from abc import ABC, abstractmethod
 from math import log, floor, ceil
 
@@ -52,6 +56,11 @@ class TranslateInputHandler(EventHandler):
         self.__sizes = screen_size
         self.__delta = [0, 0]
 
+        self.__last = Int2DZero
+
+    def last_pos(self):
+        return self.__last
+
     def delta(self) -> Int2D:
         return tuple(self.__delta)
 
@@ -70,13 +79,6 @@ class TranslateInputHandler(EventHandler):
         sx, sy = ceil(w / 2 - w / k / 2 + x / k - dx), ceil(h / 2 - h / k / 2 + y / k - dy)
         return sx, sy
 
-    def __ev_delta(self, now):
-        return now[0] - self.__prev[0], now[1] - self.__prev[1]
-
-    def __plus(self, delta):
-        self.__delta[0] = self.__delta[0] + delta[0]
-        self.__delta[1] = self.__delta[1] + delta[1]
-
     @staticmethod
     def is_lmb(event: pygame.event.Event):
         return event.button == 1
@@ -93,8 +95,9 @@ class TranslateInputHandler(EventHandler):
             self.__prev = None
             return
         elif event.type == pygame.MOUSEMOTION:
+            l_pos = self.__map_scaled(event.pos)
+            self.__last = l_pos
             if not self.__prev:
                 return
-            l_pos = self.__map_scaled(event.pos)
-            self.__plus(self.__ev_delta(l_pos))
+            sum2dref(self.__delta, sub2d(l_pos, self.__prev))
             self.__prev = l_pos

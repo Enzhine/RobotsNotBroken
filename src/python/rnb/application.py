@@ -8,13 +8,13 @@ from .core import (
     is_unscalable,
     mk_enum,
     enum,
-    dist
+    dist, sum2d, sub2d
 )
 from .sprites import (
     BasicSpriteBlock,
     MultiBlock,
     PowerStageMultiblock,
-    RobotEntity
+    RobotEntity, CursorBlock
 )
 from .handlers import (
     RescaleInputHandler,
@@ -54,7 +54,7 @@ class LayerControl:
 
 
 class LightMap:
-    def __init__(self, light_level: int, sizes: Int2D, base:int=None):
+    def __init__(self, light_level: int, sizes: Int2D, base: int = None):
         self.__w, self.__h = sizes
         self.__mx = light_level
         if base is None:
@@ -63,7 +63,10 @@ class LightMap:
 
     def update_light(self, pos: Int2D, level: float):
         x, y = pos
-        self.__lmp[x][y] = floor(level * self.__mx)
+        res = floor(level * self.__mx)
+        now = self.get_light(pos)
+        if res > now:
+            self.__lmp[x][y] = res
 
     def get_max(self):
         return self.__mx
@@ -164,6 +167,12 @@ class MapControl:
     def move_ip(self, obj: pygame.sprite.Sprite, x=0, y=0):
         obj.rect.move_ip(x * self.__grid_sz_x, y * -self.__grid_sz_y)
 
+    def global_to(self, x=0, y=0):
+        return x * self.__grid_sz_x, y * -self.__grid_sz_y
+
+    def global_zero(self) -> Int2D:
+        return 0, (self.__sz_y - 1) * self.__grid_sz_y
+
     def to_local_zero(self, obj: pygame.sprite.Sprite):
         self.move_ip(obj, 0, -(self.__sz_y - 1))
 
@@ -198,6 +207,19 @@ class LightControl:
             self.__map_ctrl.update_light(_pos, _level)
 
 
+class CursorController:
+    def __init__(self, th: TranslateInputHandler):
+        self.__th = th
+        self.cursor = CursorBlock()
+
+    def map_pos(self, mc: MapControl) -> Int2D:
+        return mc.local_pos_at(sub2d(self.__th.last_pos(), self.__th.delta()))
+
+    def draw_pos(self, mc: MapControl) -> Int2D:
+        map_pos = self.map_pos(mc)
+        return sum2d(mc.global_zero(), mc.global_to(*map_pos))
+
+
 class ProcessControl:
     def __init__(self, dest: pygame.surface.Surface, layer_ctrl: LayerControl):
         self.__dest = dest
@@ -207,6 +229,7 @@ class ProcessControl:
         self.map_ctrl = MapControl(self.__layer_ctrl, (16, 16), self.__dest.get_size())
         self.rescaler = RescaleInputHandler()
         self.translator = TranslateInputHandler(self.rescaler, self.__dest.get_size())
+        self.cursor_ctrl = CursorController(self.translator)
 
     def __handle_quit(self, event: pygame.event.Event):
         if event.type != pygame.QUIT:
@@ -272,23 +295,30 @@ class RenderControl:
         return self.process.map_ctrl
 
     def __blit_layer(self, layer):
-        dest = self.__pre_dest
         dest_layer = self.__layers().map_layer(layer)
         delta = self.process.translator.delta()
         for sprite in dest_layer:
             if not sprite.visible:
                 continue
             pos = sprite.rect.move(self.__layers().by_depth(delta, layer))
-            dest.blit(sprite.surf, pos)
+            self.__pre_dest.blit(sprite.surf, pos)
 
     def __blit_ordered(self):
         self.__blit_layer(LayerControl.LAYER_BACKGROUND)
         self.__blit_layer(LayerControl.LAYER_GENERAL)
         self.__blit_layer(LayerControl.LAYER_FOREGROUND)
 
+    def __blit_cursor(self):
+        sprite = self.process.cursor_ctrl.cursor
+        delta = self.process.translator.delta()
+        to = self.process.cursor_ctrl.draw_pos(self.__map_ctrl())
+        target = sprite.rect.move(*sum2d(delta, to))
+        self.__pre_dest.blit(sprite.surf, target)
+
     def __render_map(self):
         self.__pre_dest.fill((0, 0, 0))
         self.__blit_ordered()
+        self.__blit_cursor()
         self.__dest.blit(self.__rescaled(), (0, 0))
 
 

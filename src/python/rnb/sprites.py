@@ -41,19 +41,19 @@ class BasicSpriteBlock(pygame.sprite.Sprite, WorldPlaced):
     __SURFACES: dict[str, pygame.surface.Surface] = dict()
 
     @staticmethod
-    def __load_source(sprite_name: str) -> pygame.surface.Surface:
+    def load_source(sprite_name: str) -> pygame.surface.Surface:
         if sprite_name in BasicSpriteBlock.__SURFACES:
             return BasicSpriteBlock.__SURFACES[sprite_name]
         source_path = (_SPRITES_DIR / sprite_name).resolve()
         surf = pygame.image.load(source_path).convert_alpha()
-        surf.set_colorkey((255, 255, 255), RLEACCEL)
+        #surf.set_colorkey((255, 255, 255), RLEACCEL)
         BasicSpriteBlock.__SURFACES[sprite_name] = surf
         return surf
 
     def __init__(self, sprite_name: str):
         pygame.sprite.Sprite.__init__(self)
         WorldPlaced.__init__(self, 0, 0, 0)
-        self.origin_surf = BasicSpriteBlock.__load_source(sprite_name)
+        self.origin_surf = BasicSpriteBlock.load_source(sprite_name)
         self.surf = self.origin_surf.copy()
         self.rect = self.surf.get_rect()
         self.tint_col = ColorWhite
@@ -67,6 +67,15 @@ class BasicSpriteBlock(pygame.sprite.Sprite, WorldPlaced):
         self.tint_col = color
         self.surf = self.origin_surf.copy()
         self.surf.fill(color, special_flags=pygame.BLEND_MULT)
+
+
+class CursorBlock(pygame.sprite.Sprite, WorldPlaced):
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self)
+        WorldPlaced.__init__(self, 0, 0, 0)
+        self.origin_surf = BasicSpriteBlock.load_source('cursor.png')
+        self.surf = self.origin_surf.copy()
+        self.rect = self.surf.get_rect()
 
 
 class MultiBlock:

@@ -44,11 +44,11 @@ def is_unscalable(point: tuple) -> bool:
     return any(align == 0 for align in point)
 
 
-def sum2d(a: Int2D, b: Int2D) -> Int2D:
+def sum2d(a: Int2D | Int2DRef, b: Int2D | Int2DRef) -> Int2D:
     return a[0] + b[0], a[1] + b[1]
 
 
-def sub2d(a: Int2D, b: Int2D) -> Int2D:
+def sub2d(a: Int2D | Int2DRef, b: Int2D | Int2DRef) -> Int2D:
     return a[0] - b[0], a[1] - b[1]
 
 
