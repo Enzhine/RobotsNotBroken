@@ -1,0 +1,13 @@
+{
+  "sprite": "power_station_door.png",
+  "type": "default",
+  "details": {
+    "direction": "horizontal",
+    "frame": [
+      16,
+      16
+    ],
+    "order": "inwards",
+    "fps": 10
+  }
+}

@@ -6,15 +6,13 @@ from .application import (
 )
 from .core import (
     Int2D,
-    Int2DRef,
-    sum2dref,
     mul2d,
     Int2DZero,
     sub2d, sum2d, manh_dist
 )
 import random as r
 
-from .sprites import (
+from .blocks import (
     BgBigBlock,
     DirtBlock,
     StoneBlock,

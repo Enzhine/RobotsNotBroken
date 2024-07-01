@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
 
 import pygame
+
+from .context import WrappedContext, SmartContext
 from .core import Int2D, Int2DZero, get_or, is_unscalable, mk_enum, enum, dist, sum2d, sub2d
-from .sprites import BasicSpriteBlock, MultiBlock, CursorBlock
+from .blocks import MultiBlock, CursorBlock, WorldPlaced
+from .render import Rendering, TickingRendering
 from .handlers import RescaleInputHandler, TranslateInputHandler, GuiContextListener, TestGui
 from math import ceil, floor
 
@@ -87,19 +90,19 @@ class MapControl:
         else:
             return 0
 
-    def __cache_get(self, pos: Int2D, layer: enum = LayerControl.LAYER_BACKGROUND) -> BasicSpriteBlock | None:
+    def __cache_get(self, pos: Int2D, layer: enum = LayerControl.LAYER_BACKGROUND) -> Rendering | None:
         x, y = pos
         z = MapControl.__map_z(layer)
         return self.__cache[x][y][z]
 
-    def __cache_set(self, obj: BasicSpriteBlock | None, pos: Int2D, layer: enum = LayerControl.LAYER_BACKGROUND):
+    def __cache_set(self, obj: Rendering | None, pos: Int2D, layer: enum = LayerControl.LAYER_BACKGROUND):
         x, y = pos
         z = MapControl.__map_z(layer)
         self.__cache[x][y][z] = obj
         if obj:
             obj.assign(x, y, z)
 
-    def set_silently(self, sprite: BasicSpriteBlock, pos: Int2D, layer: enum = LayerControl.LAYER_BACKGROUND):
+    def set_silently(self, sprite: Rendering, pos: Int2D, layer: enum = LayerControl.LAYER_BACKGROUND):
         ground = self.layers.map_layer(layer)
         ground.add(sprite)
         self.to_local_zero(sprite)
@@ -117,7 +120,6 @@ class MapControl:
 
             self.to_local_zero(sprite)
             self.move_ip(sprite, *pos)
-            self.sync_light(sprite)
             # cache
             for spos in MultiBlock.structure(sprite):
                 x, y = pos[0] + spos[0], pos[1] + spos[1]
@@ -125,7 +127,7 @@ class MapControl:
         elif got:
             self.rem(pos, layer)
 
-    def get(self, pos: Int2D = Int2DZero, layer: enum = LayerControl.LAYER_BACKGROUND) -> BasicSpriteBlock | None:
+    def get(self, pos: Int2D = Int2DZero, layer: enum = LayerControl.LAYER_BACKGROUND) -> Rendering | None:
         return self.__cache_get(pos, layer)
 
     def rem(self, pos: Int2D = Int2DZero, layer: enum = LayerControl.LAYER_BACKGROUND) -> bool:
@@ -138,19 +140,11 @@ class MapControl:
             return True
         return False
 
-    def sync_light(self, sprite: BasicSpriteBlock):
-        _col = self.light_map.get_light(sprite.world_pos())
-        col = (_col, _col, _col)
-        sprite.tint(col)
-
     def update_light(self, pos: Int2D, level: float):
         self.light_map.update_light(pos, level)
-        sprite = self.get(pos, LayerControl.LAYER_GENERAL)
-        if sprite:
-            self.sync_light(sprite)
 
-    def move_ip(self, obj: pygame.sprite.Sprite, x=0, y=0):
-        obj.rect.move_ip(x * self.__grid_sz_x, y * -self.__grid_sz_y)
+    def move_ip(self, sprite: Rendering, x=0, y=0):
+        sprite.bounds().move_ip(x * self.__grid_sz_x, y * -self.__grid_sz_y)
 
     def global_to(self, x=0, y=0):
         return x * self.__grid_sz_x, y * -self.__grid_sz_y
@@ -158,7 +152,7 @@ class MapControl:
     def global_zero(self) -> Int2D:
         return 0, (self.__sz_y - 1) * self.__grid_sz_y
 
-    def to_local_zero(self, obj: pygame.sprite.Sprite):
+    def to_local_zero(self, obj: Rendering):
         self.move_ip(obj, 0, -(self.__sz_y - 1))
 
     def local_pos_at(self, abs_pos: Int2D) -> Int2D:
@@ -192,17 +186,33 @@ class LightControl:
             self.__map_ctrl.update_light(_pos, _level)
 
 
-class CursorController:
-    def __init__(self, th: TranslateInputHandler):
+class GameCursorInputHandler(SmartContext):
+
+    def __init__(self, th: TranslateInputHandler, map_ctrl: MapControl):
+        SmartContext.__init__(self)
+        self.__mc = map_ctrl
         self.__th = th
+        self.__last = Int2DZero
+
         self.cursor = CursorBlock()
 
-    def map_pos(self, mc: MapControl) -> Int2D:
-        return mc.local_pos_at(sub2d(self.__th.last_pos(), self.__th.delta()))
+    def priority(self) -> int:
+        return 10
 
-    def draw_pos(self, mc: MapControl) -> Int2D:
-        map_pos = self.map_pos(mc)
-        return sum2d(mc.global_zero(), mc.global_to(*map_pos))
+    def notify(self, event: pygame.event.Event):
+        if event.type == pygame.MOUSEMOTION:
+            self.__last = self.__th.map_scaled(event.pos)
+
+    def map_pos(self) -> Int2D:
+        return self.__mc.local_pos_at(self.__last)
+
+    def draw_pos(self) -> Int2D:
+        map_pos = self.map_pos()
+        return sum2d(self.__mc.global_zero(), self.__mc.global_to(*map_pos))
+
+    def state_changed(self, state: enum):
+        if state == WrappedContext.CTXT_UNF:
+            self.__last = Int2DZero
 
 
 class ProcessControl:
@@ -218,7 +228,8 @@ class ProcessControl:
         self.rescaler.listen(self.ctxt_listener)
         self.translator = TranslateInputHandler(self.rescaler, self.__dest.get_size())
         self.translator.listen(self.ctxt_listener)
-        self.cursor_ctrl = CursorController(self.translator)
+        self.cursor_ctrl = GameCursorInputHandler(self.translator, self.map_ctrl)
+        self.cursor_ctrl.listen(self.ctxt_listener)
 
     def __handle_quit(self, event: pygame.event.Event):
         if event.type != pygame.QUIT:
@@ -232,7 +243,7 @@ class ProcessControl:
             self.ctxt_listener.on_event(event)
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    TestGui(self.__layer_ctrl.gui, self.__dest).listen(self.ctxt_listener)
+                    TestGui(self.__layer_ctrl.gui, self.__dest).listen(self.ctxt_listener, push=True)
                 # pos = self.cursor_ctrl.map_pos(self.map_ctrl)
                 # if event.button == 1:
                 #     self.map_ctrl.light_ctrl.brighten(pos, 5)
@@ -247,11 +258,12 @@ class ProcessControl:
 class RenderControl:
     def __init__(self, dest: pygame.surface.Surface, process: ProcessControl, **props):
         self.__dest = dest
-        self.__pre_dest = pygame.surface.Surface(self.__dest.get_size())
-        self.fps = get_or(props, 'fps', 60)
+        self.__pre_dest = pygame.surface.Surface(self.__dest.get_size()).convert_alpha()
+        self.fps = get_or(props, 'fps', 30)
 
         self.process = process
         self.clock = pygame.time.Clock()
+        self.__dms = 0.0
 
     def __cycle_once(self):
         # logic
@@ -260,7 +272,8 @@ class RenderControl:
         self.__render_map()
         # flip
         pygame.display.flip()
-        self.clock.tick(self.fps)
+        self.__dms = self.clock.tick(self.fps)
+        print(self.clock.get_fps())
 
     def start(self):
         while self.process.alive:
@@ -280,26 +293,32 @@ class RenderControl:
     def __map_ctrl(self):
         return self.process.map_ctrl
 
-    def __blit_layer(self, layer):
+    def __blit_layer(self, layer, dms: float):
         dest_layer = self.__layers().map_layer(layer)
         delta = self.process.translator.delta()
         for sprite in dest_layer:
+            sprite: Rendering
             if not sprite.visible:
                 continue
-            pos = sprite.rect.move(self.__layers().by_depth(delta, layer))
-            self.__pre_dest.blit(sprite.surf, pos)
+            if isinstance(sprite, TickingRendering):
+                sprite.tick(dms)
+            pos = sprite.bounds().move(self.__layers().by_depth(delta, layer))
+            surf, area = sprite.current_frame()
+            self.__pre_dest.blit(surf, dest=pos, area=area)
+            if layer == LayerControl.LAYER_GENERAL and isinstance(sprite, WorldPlaced):
+                _col = self.process.map_ctrl.light_map.get_light(sprite.world_pos())
+                self.__pre_dest.fill((_col, _col, _col), rect=pos, special_flags=pygame.BLEND_MULT)
 
-    def __blit_ordered(self):
-        self.__blit_layer(LayerControl.LAYER_BACKGROUND)
-        self.__blit_layer(LayerControl.LAYER_GENERAL)
-        self.__blit_layer(LayerControl.LAYER_FOREGROUND)
+    def __blit_ordered(self, dms: float):
+        self.__blit_layer(LayerControl.LAYER_BACKGROUND, dms)
+        self.__blit_layer(LayerControl.LAYER_GENERAL, dms)
+        self.__blit_layer(LayerControl.LAYER_FOREGROUND, dms)
 
     def __blit_cursor(self):
         sprite = self.process.cursor_ctrl.cursor
-        delta = self.process.translator.delta()
-        to = self.process.cursor_ctrl.draw_pos(self.__map_ctrl())
-        target = sprite.rect.move(*sum2d(delta, to))
-        self.__pre_dest.blit(sprite.surf, target)
+        to = sum2d(self.process.cursor_ctrl.draw_pos(), self.process.translator.delta())
+        target = sprite.bounds().move(to)
+        self.__pre_dest.blit(sprite.surface(), target)
 
     def __blit_gui(self):
         for sprite in self.__layers().gui:
@@ -307,7 +326,7 @@ class RenderControl:
 
     def __render_map(self):
         self.__pre_dest.fill((0, 0, 0))
-        self.__blit_ordered()
+        self.__blit_ordered(self.__dms)
         self.__blit_cursor()
         self.__dest.blit(self.__rescaled(), (0, 0))
         self.__blit_gui()

@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import pygame
 
 from .core import enum, mk_enum, Int2D
+from sortedcontainers import SortedList
 
 
 class EventHandler(ABC):
@@ -32,26 +33,20 @@ class AbstractContextListener(ABC):
 
 
 class WrappedContext(AbstractContext, ABC):
-    def __init__(self):
-        self._producer: AbstractContextListener | None = None
+    CTXT_UNF = mk_enum()
+    CTXT_F = mk_enum()
 
     @abstractmethod
-    def is_primary(self) -> bool:
+    def priority(self) -> int:
         raise NotImplementedError
 
-    def listen(self, context: AbstractContextListener):
-        self._producer = context
-        self._producer.subscribe(self)
-
-    def disconnect(self):
-        if self._producer:
-            self._producer.forget(self)
-            self._producer = None
+    def state_changed(self, state: enum):
+        pass
 
 
-class MultiContextListener(AbstractContextListener, ABC):
+class WrappedContextListener(AbstractContextListener, ABC):
     def __init__(self, *contexts: WrappedContext):
-        self.__layers: list[list[WrappedContext]] = []
+        self.__layers: list[SortedList] = []
         self.__current = -1
 
         for context in contexts:
@@ -61,17 +56,25 @@ class MultiContextListener(AbstractContextListener, ABC):
         return self.__layers[self.__current]
 
     def __push_layer(self):
-        self.__layers.append([])
+        if self.is_listening():
+            for ctxt in self.current_layer():
+                ctxt: WrappedContext
+                ctxt.state_changed(WrappedContext.CTXT_UNF)
+        self.__layers.append(SortedList(key=lambda _ctxt: _ctxt.priority()))
         self.__current += 1
 
     def __pop_layer(self):
         self.__layers.pop()
         self.__current -= 1
+        if self.is_listening():
+            for ctxt in self.current_layer():
+                ctxt: WrappedContext
+                ctxt.state_changed(WrappedContext.CTXT_F)
 
-    def subscribe(self, context: WrappedContext):
-        if context.is_primary() or not self.is_listening():
+    def subscribe(self, context: WrappedContext, push=False):
+        if push or not self.is_listening():
             self.__push_layer()
-        self.current_layer().append(context)
+        self.current_layer().add(context)
 
     def forget(self, context: WrappedContext):
         if not self.is_listening():
@@ -85,11 +88,28 @@ class MultiContextListener(AbstractContextListener, ABC):
         return self.__current != -1
 
 
-class GuiContext(WrappedContext, ABC):
+class SmartContext(WrappedContext, ABC):
+    def __init__(self):
+        self._producer: AbstractContextListener | None = None
+
+    def listen(self, context: WrappedContextListener, push=False):
+        self._producer = context
+        self._producer.subscribe(self, push)
+
+    def disconnect(self):
+        if self._producer:
+            self._producer.forget(self)
+            self._producer = None
+
+
+class GuiContext(SmartContext, ABC):
     TYPE_LMB: enum = mk_enum()
     TYPE_RMB: enum = mk_enum()
     TYPE_H_ENTER: enum = mk_enum()
     TYPE_H_EXIT: enum = mk_enum()
+
+    def __init__(self):
+        SmartContext.__init__(self)
 
     @abstractmethod
     def bounds(self) -> pygame.Rect:
@@ -98,5 +118,3 @@ class GuiContext(WrappedContext, ABC):
     @abstractmethod
     def notify(self, pos: Int2D, _type: enum):
         raise NotImplementedError
-
-
