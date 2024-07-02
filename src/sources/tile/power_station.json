@@ -7,8 +7,8 @@
       16,
       16
     ],
-    "order": "inwards",
-    "loop": "cycling",
-    "fps": 10
+    "order": "backwards",
+    "loop": "flipping",
+    "duration": 8
   }
 }

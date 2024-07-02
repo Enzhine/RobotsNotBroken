@@ -121,7 +121,7 @@ class StaticRendering(Rendering):
 
 class DefaultRendering(TickingRendering):
     __KEY_D_ORDER = 'order'
-    __KEY_D_FPS = 'fps'
+    __KEY_D_DURATION = 'duration'
     __KEY_D_LOOP = 'loop'
 
     ORDER_INWARDS = 'inwards'
@@ -130,24 +130,23 @@ class DefaultRendering(TickingRendering):
     LOOP_CYCLING = 'cycling'
     LOOP_FLIPPING = 'flipping'
 
-    DEFAULT_FPS: int = 30
+    DEFAULT_DURATION: int = 2
     DEFAULT_ORDER: str = ORDER_INWARDS
     DEFAULT_LOOP: str = LOOP_NONE
 
     def __init__(self, tile_name: str):
         TickingRendering.__init__(self, tile_name)
         assert self._type == Rendering.TYPE_DEFAULT
-        self._fps = int(self._details.get(DefaultRendering.__KEY_D_FPS, DefaultRendering.DEFAULT_FPS))
+        self._duration = float(self._details.get(DefaultRendering.__KEY_D_DURATION, DefaultRendering.DEFAULT_DURATION))
         self._order = self._details.get(DefaultRendering.__KEY_D_ORDER, DefaultRendering.DEFAULT_ORDER)
-        assert self._order in [DefaultRendering.ORDER_INWARDS,DefaultRendering.ORDER_BACKWARDS]
+        assert self._order in [DefaultRendering.ORDER_INWARDS, DefaultRendering.ORDER_BACKWARDS]
         self._loop = self._details.get(DefaultRendering.__KEY_D_LOOP, DefaultRendering.DEFAULT_LOOP)
         assert (self._loop is None) or (self._loop in [DefaultRendering.LOOP_NONE, DefaultRendering.LOOP_CYCLING, DefaultRendering.LOOP_FLIPPING])
 
         self.__alive = True
         self.__ending = self._loop is None
         self.__cycling = self._loop == DefaultRendering.LOOP_CYCLING
-        self.__frames_ms: float = 60 / self._fps
-        self.__frames_lms = 0.0
+
         if self._frame_direction == Rendering.DIRECTION_HORIZONTAL:
             self.__frames_steps = self._rect.w // self._frame_size[0]
             self.__range_x = [x for x in range(0, self._rect.w, self._frame_size[0])]
@@ -156,6 +155,10 @@ class DefaultRendering(TickingRendering):
             self.__frames_steps = self._rect.h // self._frame_size[1]
             self.__range_x = [0 for _ in range(self.__frames_steps)]
             self.__range_y = [y for y in range(0, self._rect.h, self._frame_size[1])]
+
+        self.__frames_ms: float = self._duration * 1_000 / self.__frames_steps
+        self.__frames_lms = 0.0
+
         if self._order == DefaultRendering.ORDER_INWARDS:
             self.__frames_c = 0
             self.__frames_inwards = True

@@ -272,6 +272,8 @@ class RenderControl:
         self.clock = pygame.time.Clock()
         self.__dms = 0.0
 
+        self.__front = pygame.font.Font(None, 36)
+
     def __cycle_once(self):
         # logic
         self.process.update()
@@ -280,7 +282,6 @@ class RenderControl:
         # flip
         pygame.display.flip()
         self.__dms = self.clock.tick(self.fps)
-        print(self.clock.get_fps())
 
     def start(self):
         while self.process.alive:
@@ -310,10 +311,10 @@ class RenderControl:
         view = pygame.Rect(*self.__rescaled_view())
         for sprite in dest_layer:
             sprite: Rendering
+            if hasattr(sprite, 'tick'):
+                sprite.tick(dms)
             if not sprite.visible:
                 continue
-            if isinstance(sprite, TickingRendering):
-                sprite.tick(dms)
             pos = sprite.bounds().move(self.__layers().by_depth(delta, layer))
             if not pos.colliderect(view):
                 continue
@@ -341,6 +342,7 @@ class RenderControl:
         self.__blit_cursor()
         self.__dest.blit(self.__rescaled(), (0, 0))
         self.__blit_gui()
+        self.__dest.blit(self.__front.render(f'{self.clock.get_fps():.2f}', False, (255, 255, 255)), Int2DZero)
 
 
 class WorldGenerator(ABC):
