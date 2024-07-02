@@ -69,7 +69,7 @@ class Rendering(pygame.sprite.Sprite, ABC):
         self.visible = True
 
         self.__origin: pygame.Surface = surf
-        self._surf: pygame.Surface = surf.copy()
+        self._surf: pygame.Surface = self.__origin.copy()
         self._rect: pygame.Rect = self._surf.get_rect()
         self._type: str = _json[Rendering.__KEY_TYPE]
         self._details = _json.get(Rendering.__KEY_DETAILS, dict())
@@ -88,6 +88,11 @@ class Rendering(pygame.sprite.Sprite, ABC):
 
     def _origin(self):
         return self.__origin
+
+    def tint_by(self, _col: int):
+        new = self.__origin.copy()
+        new.fill((_col, _col, _col), special_flags=pygame.BLEND_MULT)
+        self._surf = new
 
     @abstractmethod
     def current_frame(self) -> tuple[pygame.Surface, pygame.Rect]:

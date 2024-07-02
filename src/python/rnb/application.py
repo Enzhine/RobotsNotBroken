@@ -50,18 +50,18 @@ class LightMap:
             base = self.__mx
         self.__lmp = [[base for _ in range(self.__h)] for _ in range(self.__w)]
 
-    def update_light(self, pos: Int2D, level: float):
+    def update_light(self, pos: Int2D, level: float) -> int:
         x, y = pos
         now = floor(level * self.__mx)
-        before = self.get_light(pos)
-        self.__lmp[x][y] = min(self.__mx, before + now)
+        self.__lmp[x][y] += now
+        return self.get_light(pos)
 
     def get_max(self):
         return self.__mx
 
     def get_light(self, pos: Int2D) -> int:
         x, y = pos
-        return self.__lmp[x][y]
+        return min(self.__lmp[x][y], self.__mx)
 
 
 class MapControl:
@@ -120,6 +120,7 @@ class MapControl:
 
             self.to_local_zero(sprite)
             self.move_ip(sprite, *pos)
+            self.__sync_light(sprite, pos)
             # cache
             for spos in MultiBlock.structure(sprite):
                 x, y = pos[0] + spos[0], pos[1] + spos[1]
@@ -140,8 +141,14 @@ class MapControl:
             return True
         return False
 
+    def __sync_light(self, obj, pos: Int2D):
+        obj.tint_by(self.light_map.get_light(pos))
+
     def update_light(self, pos: Int2D, level: float):
         self.light_map.update_light(pos, level)
+        obj = self.get(pos, LayerControl.LAYER_GENERAL)
+        if obj:
+            self.__sync_light(obj, pos)
 
     def move_ip(self, sprite: Rendering, x=0, y=0):
         sprite.bounds().move_ip(x * self.__grid_sz_x, y * -self.__grid_sz_y)
@@ -259,7 +266,7 @@ class RenderControl:
     def __init__(self, dest: pygame.surface.Surface, process: ProcessControl, **props):
         self.__dest = dest
         self.__pre_dest = pygame.surface.Surface(self.__dest.get_size()).convert_alpha()
-        self.fps = get_or(props, 'fps', 30)
+        self.fps = get_or(props, 'fps', 60)
 
         self.process = process
         self.clock = pygame.time.Clock()
@@ -279,12 +286,16 @@ class RenderControl:
         while self.process.alive:
             self.__cycle_once()
 
-    def __rescaled(self) -> pygame.surface.Surface:
+    def __rescaled_view(self) -> tuple[Int2D, Int2D]:
         k = self.process.rescaler.scale
         w, h = self.__dest.get_size()
         sw, sh = ceil(w / k), ceil(h / k)
         cx, cy = ceil(w / 2), ceil(h / 2)
-        sub = self.__pre_dest.subsurface((cx - sw // 2, cy - sh // 2), (sw, sh))
+        return (cx - sw // 2, cy - sh // 2), (sw, sh)
+
+    def __rescaled(self) -> pygame.surface.Surface:
+        w, h = self.__dest.get_size()
+        sub = self.__pre_dest.subsurface(*self.__rescaled_view())
         return pygame.transform.scale(sub, (w, h))
 
     def __layers(self):
@@ -296,6 +307,7 @@ class RenderControl:
     def __blit_layer(self, layer, dms: float):
         dest_layer = self.__layers().map_layer(layer)
         delta = self.process.translator.delta()
+        view = pygame.Rect(*self.__rescaled_view())
         for sprite in dest_layer:
             sprite: Rendering
             if not sprite.visible:
@@ -303,11 +315,10 @@ class RenderControl:
             if isinstance(sprite, TickingRendering):
                 sprite.tick(dms)
             pos = sprite.bounds().move(self.__layers().by_depth(delta, layer))
+            if not pos.colliderect(view):
+                continue
             surf, area = sprite.current_frame()
             self.__pre_dest.blit(surf, dest=pos, area=area)
-            if layer == LayerControl.LAYER_GENERAL and isinstance(sprite, WorldPlaced):
-                _col = self.process.map_ctrl.light_map.get_light(sprite.world_pos())
-                self.__pre_dest.fill((_col, _col, _col), rect=pos, special_flags=pygame.BLEND_MULT)
 
     def __blit_ordered(self, dms: float):
         self.__blit_layer(LayerControl.LAYER_BACKGROUND, dms)
