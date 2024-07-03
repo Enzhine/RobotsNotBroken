@@ -16,7 +16,7 @@ from .blocks import (
     BgBigBlock,
     DirtBlock,
     StoneBlock,
-    PowerStageMultiblock
+    PowerStationMultiblock
 )
 
 
@@ -109,5 +109,5 @@ class DefaultWorldGenerator(WorldGenerator):
                 map_ctrl.set(clazz, pos=(x, y), layer=LayerControl.LAYER_GENERAL)
         # prepared
         center = (cx, cy)
-        map_ctrl.set(PowerStageMultiblock, pos=center, layer=LayerControl.LAYER_GENERAL)
+        map_ctrl.set(PowerStationMultiblock, pos=center, layer=LayerControl.LAYER_GENERAL)
         map_ctrl.light_ctrl.brighten(center, 5)

@@ -4,8 +4,8 @@ import pygame
 
 from .context import WrappedContext, SmartContext
 from .core import Int2D, Int2DZero, get_or, is_unscalable, mk_enum, enum, dist, sum2d, sub2d
-from .blocks import MultiBlock, CursorBlock, WorldPlaced
-from .render import Rendering, TickingRendering
+from .blocks import MultiBlock, CursorBlock, WorldPlaced, PowerStationMultiblock, SubRendering
+from .render import Rendering
 from .handlers import RescaleInputHandler, TranslateInputHandler, GuiContextListener, TestGui
 from math import ceil, floor
 
@@ -210,6 +210,9 @@ class GameCursorInputHandler(SmartContext):
         if event.type == pygame.MOUSEMOTION:
             self.__last = self.__th.map_scaled(event.pos)
 
+    def pointing_object(self, layer):
+        return self.__mc.get(self.map_pos(), layer)
+
     def map_pos(self) -> Int2D:
         return self.__mc.local_pos_at(self.__last)
 
@@ -250,7 +253,13 @@ class ProcessControl:
             self.ctxt_listener.on_event(event)
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    TestGui(self.__layer_ctrl.gui, self.__dest).listen(self.ctxt_listener, push=True)
+                    obj = self.cursor_ctrl.pointing_object(LayerControl.LAYER_GENERAL)
+                    if isinstance(obj, PowerStationMultiblock):
+                        if obj.state_open:
+                            obj.set_closed()
+                        else:
+                            obj.set_open()
+                    #TestGui(self.__layer_ctrl.gui, self.__dest).listen(self.ctxt_listener, push=True)
                 # pos = self.cursor_ctrl.map_pos(self.map_ctrl)
                 # if event.button == 1:
                 #     self.map_ctrl.light_ctrl.brighten(pos, 5)
@@ -311,8 +320,7 @@ class RenderControl:
         view = pygame.Rect(*self.__rescaled_view())
         for sprite in dest_layer:
             sprite: Rendering
-            if hasattr(sprite, 'tick'):
-                sprite.tick(dms)
+            sprite.tick(dms)
             if not sprite.visible:
                 continue
             pos = sprite.bounds().move(self.__layers().by_depth(delta, layer))
@@ -320,6 +328,11 @@ class RenderControl:
                 continue
             surf, area = sprite.current_frame()
             self.__pre_dest.blit(surf, dest=pos, area=area)
+            if isinstance(sprite, SubRendering):
+                for sub in sprite.sub_renders():
+                    pos = sub.bounds().move(self.__layers().by_depth(delta, layer))
+                    surf, area = sub.current_frame()
+                    self.__pre_dest.blit(surf, dest=pos, area=area)
 
     def __blit_ordered(self, dms: float):
         self.__blit_layer(LayerControl.LAYER_BACKGROUND, dms)
@@ -336,13 +349,25 @@ class RenderControl:
         for sprite in self.__layers().gui:
             self.__dest.blit(sprite.surf, sprite.rect)
 
+    def __blit_fps(self):
+        self.__dest.blit(self.__front.render(f'{self.clock.get_fps():.2f}', False, (255, 255, 255)), Int2DZero)
+
+    def __blit_cursor_info(self):
+        obj = self.process.cursor_ctrl.pointing_object(LayerControl.LAYER_GENERAL)
+        if obj:
+            txt = str(obj)
+        else:
+            txt = 'Air'
+        self.__dest.blit(self.__front.render(txt, False, (255, 255, 255)), (0, 36))
+
     def __render_map(self):
         self.__pre_dest.fill((0, 0, 0))
         self.__blit_ordered(self.__dms)
         self.__blit_cursor()
         self.__dest.blit(self.__rescaled(), (0, 0))
         self.__blit_gui()
-        self.__dest.blit(self.__front.render(f'{self.clock.get_fps():.2f}', False, (255, 255, 255)), Int2DZero)
+        self.__blit_fps()
+        self.__blit_cursor_info()
 
 
 class WorldGenerator(ABC):

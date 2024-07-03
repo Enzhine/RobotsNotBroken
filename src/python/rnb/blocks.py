@@ -54,11 +54,25 @@ class StaticBlock(StaticRendering, WorldPlaced):
         StaticRendering.__init__(self, tile_name)
         WorldPlaced.__init__(self, 0, 0, 0)
 
+    def __repr__(self):
+        return self.__class__.__name__
+
 
 class AnimatedBlock(DefaultRendering, WorldPlaced):
     def __init__(self, tile_name: str):
         DefaultRendering.__init__(self, tile_name)
         WorldPlaced.__init__(self, 0, 0, 0)
+
+    def __repr__(self):
+        return self.__class__.__name__
+
+
+class SubRendering:
+    def __init__(self):
+        self._sub_renders = pygame.sprite.Group()
+
+    def sub_renders(self) -> list[Rendering]:
+        return self._sub_renders
 
 
 class CursorBlock(StaticBlock):
@@ -83,13 +97,59 @@ class BgBigBlock(StaticBlock):
         self._rect.move_ip(0, -(y * 3 // 4))
 
 
-class PowerStageMultiblock(AnimatedBlock, MultiBlock):
+class PowerStationMultiblock(Rendering, MultiBlock, WorldPlaced, SubRendering):
     def __init__(self):
-        # TODO: REPLACE TO EXISTING
-        AnimatedBlock.__init__(self, "power_station.json")
+        Rendering.__init__(self, "power_station.json")
+        WorldPlaced.__init__(self, 0, 0, 0)
         MultiBlock.__init__(self, [(0, 0), (1, 0), (0, 1), (1, 1)])
+        SubRendering.__init__(self)
+
         x, y = self._rect.size
         self._rect.move_ip(0, -(y * 1 // 2))
+
+        self.state_open = False
+        self.__state_open_render: DefaultRendering | None = None
+
+    def __repr__(self):
+        return f'{self.__class__.__name__};{self.state_open=}'
+
+    def _apply_state(self, state: Rendering):
+        _surf, _area = state.current_frame()
+        self.surface().blit(_surf, dest=self._rect_delta(state), area=_area)
+
+    def set_open(self):
+        if not self.state_open:
+            if self.__state_open_render:
+                self.__state_open_render.kill()
+            self.__state_open_render = DefaultRendering('power_station_door_open.json')
+            self.__state_open_render.bounds().move_ip(self.__state_open_render._rect_delta(self, (0, self.bounds().h // 2)))
+            self.__state_open_render.tint_by(self.tint())
+
+            self.sub_renders().add(self.__state_open_render)
+            self.state_open = True
+
+    def set_closed(self):
+        if self.state_open:
+            if self.__state_open_render:
+                self.__state_open_render.kill()
+            self.__state_open_render = DefaultRendering('power_station_door_close.json')
+            self.__state_open_render.bounds().move_ip(self.__state_open_render._rect_delta(self, (0, self.bounds().h // 2)))
+            self.__state_open_render.tint_by(self.tint())
+
+            self.sub_renders().add(self.__state_open_render)
+            self.state_open = False
+
+    def current_frame(self) -> tuple[pygame.Surface, pygame.Rect]:
+        return self._surf, self._surf.get_rect()
+
+    def tick(self, ms: float):
+        if self.__state_open_render:
+            if self.__state_open_render.is_ended():
+                self._apply_state(self.__state_open_render)
+                self.__state_open_render.kill()
+                self.__state_open_render = None
+            else:
+                self.__state_open_render.tick(ms)
 
 
 class RobotEntity(StaticBlock):

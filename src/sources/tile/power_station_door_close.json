@@ -8,7 +8,6 @@
       16
     ],
     "order": "backwards",
-    "loop": "flipping",
-    "duration": 8
+    "duration": 0.5
   }
 }

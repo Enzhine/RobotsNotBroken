@@ -80,6 +80,11 @@ class Rendering(pygame.sprite.Sprite, ABC):
         arr = self._details.get(Rendering.__KEY_D_FRAME, Rendering.DEFAULT_FRAME)
         self._frame_size: Int2D = (int(arr[0]), int(arr[1]))
 
+        self.__tint: int = 255
+
+    def _rect_delta(self, other: 'Rendering', offset: Int2D = Int2DZero):
+        return other.bounds().x - self.bounds().x + offset[0], other.bounds().y - self.bounds().y + offset[1]
+
     def surface(self):
         return self._surf
 
@@ -89,7 +94,11 @@ class Rendering(pygame.sprite.Sprite, ABC):
     def _origin(self):
         return self.__origin
 
+    def tint(self) -> int:
+        return self.__tint
+
     def tint_by(self, _col: int):
+        self.__tint = _col
         new = self.__origin.copy()
         new.fill((_col, _col, _col), special_flags=pygame.BLEND_MULT)
         self._surf = new
@@ -97,11 +106,6 @@ class Rendering(pygame.sprite.Sprite, ABC):
     @abstractmethod
     def current_frame(self) -> tuple[pygame.Surface, pygame.Rect]:
         raise NotImplementedError
-
-
-class TickingRendering(Rendering, ABC):
-    def __init__(self, tile_name: str):
-        Rendering.__init__(self, tile_name)
 
     @abstractmethod
     def tick(self, ms: float):
@@ -118,8 +122,11 @@ class StaticRendering(Rendering):
     def current_frame(self) -> tuple[pygame.Surface, pygame.Rect]:
         return self._surf, self.__static
 
+    def tick(self, ms: float):
+        pass
 
-class DefaultRendering(TickingRendering):
+
+class DefaultRendering(Rendering):
     __KEY_D_ORDER = 'order'
     __KEY_D_DURATION = 'duration'
     __KEY_D_LOOP = 'loop'
@@ -135,7 +142,7 @@ class DefaultRendering(TickingRendering):
     DEFAULT_LOOP: str = LOOP_NONE
 
     def __init__(self, tile_name: str):
-        TickingRendering.__init__(self, tile_name)
+        Rendering.__init__(self, tile_name)
         assert self._type == Rendering.TYPE_DEFAULT
         self._duration = float(self._details.get(DefaultRendering.__KEY_D_DURATION, DefaultRendering.DEFAULT_DURATION))
         self._order = self._details.get(DefaultRendering.__KEY_D_ORDER, DefaultRendering.DEFAULT_ORDER)
@@ -166,6 +173,9 @@ class DefaultRendering(TickingRendering):
             self.__frames_c = self.__frames_steps - 1
             self.__frames_inwards = False
         assert self.__frames_steps > 1
+
+    def is_ended(self):
+        return not self.__alive
 
     def __update_frames(self):
         if self.__frames_inwards:
