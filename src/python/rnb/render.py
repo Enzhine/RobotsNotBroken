@@ -1,5 +1,6 @@
 import json
 from abc import ABC, abstractmethod
+from typing import Generator
 
 import pygame
 
@@ -82,8 +83,9 @@ class Rendering(pygame.sprite.Sprite, ABC):
 
         self.__tint: int = 255
 
-    def _rect_delta(self, other: 'Rendering', offset: Int2D = Int2DZero):
-        return other.bounds().x - self.bounds().x + offset[0], other.bounds().y - self.bounds().y + offset[1]
+    def sub_renders(self) -> Generator['Rendering', None, None]:
+        return
+        yield
 
     def surface(self):
         return self._surf

@@ -1,7 +1,7 @@
+from abc import ABC, abstractmethod
 from math import floor
 
 from .application import (
-    WorldGenerator,
     MapControl, LayerControl
 )
 from .core import (
@@ -40,6 +40,12 @@ def rand_jump(dist: int, offset=Int2DZero, rand: r.Random = r):
 def middle(_from: Int2D, to: Int2D):
     dist = sub2d(to, _from)
     return _from[0] + dist[0] // 2, _from[1] + dist[1] // 2
+
+
+class WorldGenerator(ABC):
+    @abstractmethod
+    def generate(self, map_ctrl: MapControl):
+        raise NotImplementedError
 
 
 class DefaultWorldGenerator(WorldGenerator):

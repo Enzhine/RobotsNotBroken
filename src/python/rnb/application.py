@@ -4,7 +4,7 @@ import pygame
 
 from .context import WrappedContext, SmartContext
 from .core import Int2D, Int2DZero, get_or, is_unscalable, mk_enum, enum, dist, sum2d, sub2d
-from .blocks import MultiBlock, CursorBlock, WorldPlaced, PowerStationMultiblock, SubRendering
+from .blocks import MultiBlock, CursorBlock, WorldPlaced, PowerStationMultiblock
 from .render import Rendering
 from .handlers import RescaleInputHandler, TranslateInputHandler, GuiContextListener, TestGui
 from math import ceil, floor
@@ -328,11 +328,11 @@ class RenderControl:
                 continue
             surf, area = sprite.current_frame()
             self.__pre_dest.blit(surf, dest=pos, area=area)
-            if isinstance(sprite, SubRendering):
-                for sub in sprite.sub_renders():
-                    pos = sub.bounds().move(self.__layers().by_depth(delta, layer))
-                    surf, area = sub.current_frame()
-                    self.__pre_dest.blit(surf, dest=pos, area=area)
+            for sub in sprite.sub_renders():
+                x, y = sub.bounds().x, sub.bounds().y
+                sub_pos = pos.move(x, y)
+                surf, area = sub.current_frame()
+                self.__pre_dest.blit(surf, dest=sub_pos, area=area)
 
     def __blit_ordered(self, dms: float):
         self.__blit_layer(LayerControl.LAYER_BACKGROUND, dms)
